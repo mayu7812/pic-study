@@ -4,15 +4,44 @@ from django import forms
 from PIL import Image
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from dotenv import load_dotenv
 import openai
 from openai import OpenAIError
 import pytesseract
 import os
+import io
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
+def summarize_information(text, language='en'):
+    api_key = os.getenv('OPENAI_API_KEY')
+    print("API Key:", api_key)  # 追加
+
+    if api_key:
+        try:
+            # OpenAI API にアクセス
+            api_response = openai.ChatCompletion.create(
+                model="gpt-4-vision-preview",
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": preprocess_input(text, language)},
+                ],
+                api_key=api_key,  # API キーを渡す
+            )
+            print("API Response:", api_response)  # 追加
+            logging.info("API Response: %s", api_response)
+        except OpenAIError as e:
+            print("OpenAI Error:", e)  # 追加
+            logging.error("OpenAI Error: %s", e)
+            return f"OpenAI Error: {e}"
 
 # .env ファイルから環境変数を読み込む
 load_dotenv()
+
+def upload_page(request):
+    return render(request, 'upload.html')
 
 class ImageUploadForm(forms.Form):
     image = forms.ImageField()
@@ -24,17 +53,36 @@ class ImageUploadForm(forms.Form):
             if not (main == 'image' and sub in ['jpeg', 'pjpeg', 'png', 'gif']):
                 raise ValidationError(_('JPEG、PNG、またはGIF形式の画像を使用してください。'))
             if image.size > 5*1024*1024:  # 5MB
-                raise ValidationError(_('ファイルサイズは5MB以下にしてください。'))
+                raise ValidationError(_('ファイルサイズは5MB以下にしてください.'))
 
-            # 画像のアスペクト比と解像度をチェック
+            # 画像のアスペクト比をチェック
             pil_image = Image.open(image)
             width, height = pil_image.size
             aspect_ratio = width / height
-            resolution = width * height
             if aspect_ratio < 1 or aspect_ratio > 2:  # アスペクト比が1から2の範囲外
-                raise ValidationError(_('画像のアスペクト比は1から2の間にしてください。'))
-            if resolution < 100*100 or resolution > 2000*2000:  # 解像度が100x100から2000x2000の範囲外
-                raise ValidationError(_('画像の解像度は100x100から2000x2000の間にしてください。'))
+                raise ValidationError(_('画像のアスペクト比は1から2の間にしてください.'))
+
+            # 一時ファイルとして保存
+            temp_buffer = io.BytesIO()
+            pil_image.save(temp_buffer, format='JPEG')  # 仮にJPEG形式で保存
+            temp_buffer.seek(0)
+
+            # Image.openに一時ファイルを渡す
+            pil_image = Image.open(temp_buffer)
+
+            # 解像度を調整
+            new_width = max(100, min(2000, width))
+            new_height = max(100, min(2000, height))
+            pil_image = pil_image.resize((new_width, new_height), Image.LANCZOS)  # 修正
+
+            # 調整された画像を保存
+            output_buffer = io.BytesIO()
+            pil_image.save(output_buffer, format='JPEG')
+            output_buffer.seek(0)
+
+            # InMemoryUploadedFileのfileに一時ファイルをセット
+            image.file = output_buffer
+
         return image
 
 def preprocess_input(text, language='en'):
@@ -83,22 +131,23 @@ def summarize_information(text, language='en'):
     api_key = os.getenv('OPENAI_API_KEY')
     
     if api_key:
-        # API キーが存在する場合にのみ OpenAI クライアントを初期化
-        openai.api_key = api_key
-
-        # 問題文の生成
-        chat_models = openai.ChatCompletion.create(
-            model="gpt-4-vision-preview",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": preprocess_input(text, language)},
-            ]
-        )
-        result = preprocess_input(chat_models['choices'][0]['message']['content'], language)
-        return postprocess_output(result)
+        # API キーが存在する場合にのみ問題文の生成を試みる
+        try:
+            # OpenAI API にアクセス
+            openai.ChatCompletion.create(
+                model="gpt-4-vision-preview",
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": preprocess_input(text, language)},
+                ],
+                api_key=api_key,  # API キーを渡す
+            )
+        except OpenAIError as e:
+            # OpenAI エラーが発生した場合はここで処理
+            return f"OpenAI Error: {e}"
     else:
         # API キーが見つからない場合はエラーを返す
-        raise OpenAIError("API key not found. Set the OPENAI_API_KEY environment variable.")
+        return "API key not found. Set the OPENAI_API_KEY environment variable."
 
 def postprocess_output(result):
     # 余分な空白や改行の削除
@@ -123,6 +172,19 @@ def handle_uploaded_file(f):
         return None, str(e)
     return destination_path, None
 
+def process_image_and_render(request, image_path):
+    try:
+        # 画像のアップロードが成功した場合の処理をここに書く
+        keywords = extract_keywords(image_path)
+        summary = summarize_information(keywords)
+        return render(request, 'myapp/summary.html', {'summary': summary})
+    except FileNotFoundError:
+        # ファイルが見つからない場合やエラーが発生した場合の処理
+        return render(request, 'myapp/error.html', {'error_message': 'ファイルが見つかりません'})
+    except Exception as e:
+        # その他の例外が発生した場合の処理
+        return render(request, 'myapp/error.html', {'error_message': str(e)})
+
 def upload_image(request):
     if request.method == 'POST':
         form = ImageUploadForm(request.POST, request.FILES)
@@ -132,9 +194,22 @@ def upload_image(request):
                 form.add_error(None, f'画像の保存中にエラーが発生しました: {error}')
             else:
                 # 画像のアップロードが成功した場合の処理をここに書く
-                keywords = extract_keywords(image_path)
-                summary = summarize_information(keywords)
-                return render(request, 'summary.html', {'summary': summary})
+                process_image_and_render(request, image_path)  # 画像処理および summary.html へのリダイレクト
+                return redirect('summary')  # summary.html にリダイレクト
     else:
         form = ImageUploadForm()
-    return render(request, 'upload.html', {'form': form})
+    return render(request, 'myapp/upload.html', {'form': form})
+
+def summary(request):
+    # ここに概要ページのロジックを追加
+    return render(request, 'myapp/summary.html', {'data': 'Summary Data'})
+
+
+
+
+
+
+
+
+
+

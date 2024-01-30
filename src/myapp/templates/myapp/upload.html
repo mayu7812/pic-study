@@ -1,14 +1,12 @@
-<!DOCTYPE html>
-<html>
-<body>
+{% extends 'myapp/base.html' %}
 
-<h2>画像アップロードフォーム</h2>
+{% block title %}画像アップロードフォーム{% endblock %}
 
-<form method="post" enctype="multipart/form-data">
-  {% csrf_token %}
-  {{ form.as_p }}
-  <button type="submit">アップロード</button>
-</form>
-
-</body>
-</html>
+{% block content %}
+  <h2>画像アップロードフォーム</h2>
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">アップロード</button>
+  </form>
+{% endblock %}

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>問題文と答え</title>
+    <!-- Bootstrap CSS CDN -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <style>
+        .chat-container {
+            height: 400px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 10px;
+            overflow-y: auto;
+        }
+        .chat-message {
+            margin-bottom: 10px;
+        }
+    </style>
+    <script>
+        function toggleAnswer() {
+            var answerElement = document.getElementById('answer');
+            if (answerElement.style.display === 'none') {
+                answerElement.style.display = 'block';
+            } else {
+                answerElement.style.display = 'none';
+            }
+        }
+        function printContent() {
+            var content = document.getElementById('content').innerHTML;
+            var myWindow = window.open('', '', 'width=800,height=600');
+            myWindow.document.write('<html><head><title>問題文と答え</title>');
+            myWindow.document.write('</head><body >');
+            myWindow.document.write(content);
+            myWindow.document.write('</body></html>');
+            myWindow.document.close();
+            myWindow.print();
+        }
+    </script>
+</head>
+<body>
+    <div class="container" id="content">
+        <h1 class="mt-4">問題文と答え</h1>
+        <div class="chat-container mt-4" id="chatContainer">
+            <!-- チャットメッセージはここに追加されます -->
+        </div>
+        <button onclick="printContent()">印刷</button>
+    </div>
+    <!-- 以下のコードは以前と同じです... -->
+</body>
+</html>

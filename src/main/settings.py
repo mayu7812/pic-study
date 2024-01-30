@@ -1,17 +1,17 @@
 
 import os
 from pathlib import Path
-import openai
+import environ
 
-# OPENAI_API_KEY環境変数からAPIキーを取得
-api_key = os.getenv('OPENAI_API_KEY')
+# プロジェクトのルートディレクトリを取得
+BASE_DIR = Path(__file__).resolve().parent.parent
 
-# APIキーが存在する場合にのみOpenAIクライアントを初期化
-if api_key:
-    openai.api_key = api_key
-else:
-    raise openai.OpenAIError("API key not found. Set the OPENAI_API_KEY environment variable.")
+# .envファイルを読み込む
+env = environ.Env()
+env.read_env(os.path.join(BASE_DIR, '.env'))
 
+# .envファイルから各環境変数を読み込む
+OPENAI_API_KEY = env('OPENAI_API_KEY')
 
 
 
@@ -60,7 +60,7 @@ ROOT_URLCONF = 'main.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [ BASE_DIR / "templates"],
+        'DIRS': [os.path.join(BASE_DIR, 'templates')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
